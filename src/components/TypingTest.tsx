@@ -145,15 +145,14 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
   // Süre kontrolü
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (testActive) {
+    if (testActive && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft((prev) => {
-          const newTime = prev - 1;
-          if (newTime <= 0) {
+          if (prev <= 1) {
             endTest();
             return 0;
           }
-          return newTime;
+          return prev - 1;
         });
       }, 1000);
     }
@@ -209,31 +208,52 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
       
       // Space tuşuna basıldığında
       if (lastChar === ' ') {
-        // Birden fazla boşluğa izin verme
-        if (newValue.match(/\s{2,}/g)) {
+        // Son kelimeyi al (boşluktan önceki kelime)
+        const lastWord = newValue.trim();
+        
+        if (lastWord === '') {
           return;
         }
         
-        // Kelimeyi tamamla ve yeni kelimeye geç
-        if (currentWord.length > 0) {
-          setCompletedWords([...completedWords, currentWord]);
-          setCurrentWord('');
-        }
-      } else {
-        // Mevcut kelimeyi güncelle
-        const newWord = newValue.split(' ').pop() || '';
-        
-        // Eğer önceki kelimelerden birini silmeye çalışıyorsa engelle
-        if (newValue.split(' ').length - 1 < completedWords.length) {
-          return;
+        // Kelimeyi tamamla
+        const newCompletedWords = [...completedWords, lastWord];
+        setCompletedWords(newCompletedWords);
+        setCurrentWord('');
+        setUserInput('');
+
+        // Eğer bu son kelimeyse testi bitir
+        const words = currentText.split(' ');
+        if (newCompletedWords.length >= words.length) {
+          endTest();
         }
         
-        setCurrentWord(newWord);
+        return;
       }
       
-      // Input değerini güncelle
+      // Boşluk yoksa sadece kelimeyi güncelle
+      setCurrentWord(newValue);
       setUserInput(newValue);
       calculateStats();
+
+      // Eğer son kelimeyse ve doğru yazıldıysa testi bitir
+      const words = currentText.split(' ');
+      if (completedWords.length === words.length - 1 && 
+          newValue === words[words.length - 1]) {
+        endTest();
+      }
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Backspace') {
+      const selectionStart = e.currentTarget.selectionStart;
+      const completedLength = completedWords.join(' ').length + (completedWords.length > 0 ? 1 : 0);
+      
+      // Eğer cursor tamamlanmış kelimelerin içindeyse veya hemen sonrasındaysa
+      if (selectionStart <= completedLength) {
+        e.preventDefault();
+        return;
+      }
     }
   };
 
@@ -296,12 +316,13 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
 
   // Yeni test başlatma fonksiyonu
   const retryTest = () => {
-    const newText = getRandomWords(currentLanguage, 25, difficulty === 'hard');
-    setCurrentText(difficulty === 'easy' ? newText.toLowerCase() : newText);
+    setTimeLeft(duration);
     setUserInput('');
     setCompletedWords([]);
     setCurrentWord('');
-    setTimeLeft(duration);
+    setTestActive(false);
+    setStartTime(null);
+    setIsTestEnding(false);
     setIsTestComplete(false);
     setStats({
       wpm: 0,
@@ -311,6 +332,15 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
       totalChars: 0,
       correctWords: 0
     });
+    
+    // Yeni kelimeler seç
+    const newText = getRandomWords(currentLanguage, 25, difficulty === 'hard');
+    setCurrentText(difficulty === 'easy' ? newText.toLowerCase() : newText);
+
+    // Textarea'ya fokus
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
   };
 
   // Yazma sorununu çözmek için textarea'yı optimize et
@@ -399,32 +429,51 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
         {!isTestComplete ? (
           <textarea
             ref={textareaRef}
-            className={`w-full h-32 bg-gray-700 text-white p-4 rounded font-mono text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-500 ease-in-out ${
-              isTestEnding ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
-            }`}
-            placeholder="Start typing here..."
             value={userInput}
             onChange={handleInputChange}
-            disabled={timeLeft === 0 || isTestEnding}
-            autoFocus
-            spellCheck="false"
+            onKeyDown={handleKeyDown}
+            className={`w-full h-10 p-2 text-lg border rounded-lg 
+              focus:outline-none focus:ring-2 focus:ring-blue-500 
+              bg-white dark:bg-gray-800 
+              text-gray-900 dark:text-gray-100
+              border-gray-300 dark:border-gray-600
+              overflow-hidden resize-none
+              ${isTestEnding ? 'opacity-0 scale-95' : 'opacity-100 scale-100'} 
+              transition-all duration-500 ease-in-out`}
+            disabled={!testActive && userInput.length > 0}
+            spellCheck={false}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
-            onPaste={(e) => e.preventDefault()}
+            rows={1}
+            placeholder="Type here..."
           />
         ) : (
-          <div className="flex items-center justify-center h-32">
-            <button
-              onClick={retryTest}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 transform hover:scale-105 flex items-center space-x-2 shadow-lg"
+          <button
+            onClick={retryTest}
+            className={`px-6 py-2 text-lg font-semibold text-white 
+              bg-gradient-to-r from-blue-500 to-blue-600
+              hover:from-blue-600 hover:to-blue-700
+              rounded-lg transform hover:scale-105
+              transition-all duration-300 ease-in-out
+              flex items-center justify-center gap-2
+              ${isTestEnding ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
+          >
+            <svg 
+              className="w-5 h-5" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-              </svg>
-              <span>Try Again</span>
-            </button>
-          </div>
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+              />
+            </svg>
+            Try Again
+          </button>
         )}
       </div>
 
@@ -449,11 +498,17 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
 
       <div className="flex justify-center gap-4">
         <button
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
           onClick={startTest}
-          disabled={testActive}
+          disabled={testActive || isTestComplete}
+          className={`px-6 py-2 text-lg font-semibold text-white 
+            ${testActive || isTestComplete 
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
+            }
+            rounded-lg transform transition-all duration-300 ease-in-out
+            ${!testActive && !isTestComplete ? 'hover:scale-105' : ''}`}
         >
-          {testActive ? 'Test in Progress' : 'Start Test'}
+          Start Test
         </button>
         <button
           className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
