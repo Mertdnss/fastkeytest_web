@@ -343,6 +343,12 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [testActive, userInput, isTestComplete]);
 
+  useEffect(() => {
+    if (testActive && timeLeft === 0) {
+      endTest();
+    }
+  }, [timeLeft, testActive, endTest]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between mb-4">
