@@ -158,7 +158,7 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [testActive]);
+  }, [testActive, endTest]);
 
   useEffect(() => {
     if (testActive && userInput.length === currentText.length) {
@@ -206,7 +206,6 @@ export default function TypingTest({ duration = 60 }: TypingTestProps) {
     if (testActive || e.target.value.length === 1) {
       const newValue = e.target.value;
       const lastChar = newValue[newValue.length - 1];
-      const words = currentText.split(' ');
       
       // Space tuşuna basıldığında
       if (lastChar === ' ') {
